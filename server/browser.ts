@@ -1,3 +1,5 @@
+//server/beowser.ts
+
 import puppeteer, { Page } from 'puppeteer';
 import { BrowserProfile } from '@shared/schema';
 
