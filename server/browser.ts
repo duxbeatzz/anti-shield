@@ -13,6 +13,11 @@ const DEFAULT_ARGS = [
   '--no-service-autorun',
   '--password-store=basic',
   '--system-developer-mode',
+  // Additional flags for Replit environment
+  '--disable-gpu',
+  '--disable-software-rasterizer',
+  '--headless=new',
+  '--remote-debugging-port=0',
 ];
 
 // WebGL advanced configurations
@@ -22,78 +27,90 @@ const WEBGL_VENDOR_OVERRIDES = {
 };
 
 export async function launchBrowser(profile: BrowserProfile) {
-  const args = [
-    ...DEFAULT_ARGS,
-    `--window-size=${profile.screenResolution}`,
-    `--user-agent=${profile.userAgent}`,
-  ];
+  try {
+    console.log('Launching browser with profile:', profile.name);
 
-  if (profile.proxyEnabled && profile.proxyHost && profile.proxyPort) {
-    const proxyArg = profile.proxyUsername && profile.proxyPassword 
-      ? `--proxy-server=${profile.proxyHost}:${profile.proxyPort} --proxy-auth=${profile.proxyUsername}:${profile.proxyPassword}`
-      : `--proxy-server=${profile.proxyHost}:${profile.proxyPort}`;
-    args.push(proxyArg);
-  }
+    const args = [
+      ...DEFAULT_ARGS,
+      `--window-size=${profile.screenResolution}`,
+      `--user-agent=${profile.userAgent}`,
+    ];
 
-  const browser = await puppeteer.launch({
-    headless: false,
-    args,
-    ignoreDefaultArgs: ['--enable-automation'],
-  });
+    if (profile.proxyEnabled && profile.proxyHost && profile.proxyPort) {
+      const proxyArg = profile.proxyUsername && profile.proxyPassword 
+        ? `--proxy-server=${profile.proxyHost}:${profile.proxyPort} --proxy-auth=${profile.proxyUsername}:${profile.proxyPassword}`
+        : `--proxy-server=${profile.proxyHost}:${profile.proxyPort}`;
+      args.push(proxyArg);
+    }
 
-  const page = await browser.newPage();
-
-  // Advanced fingerprint spoofing
-  await page.evaluateOnNewDocument(() => {
-    // Override navigator properties
-    const overrides = {
-      webdriver: false,
-      languages: navigator.languages,
-      plugins: { length: 3 },
-      chrome: { app: {}, runtime: {}, webstore: {} },
-      permissions: { query: async () => ({ state: "prompt" }) },
-    };
-
-    Object.defineProperties(navigator, {
-      ...Object.entries(overrides).reduce((acc, [key, value]) => ({
-        ...acc,
-        [key]: { get: () => value }
-      }), {})
+    const browser = await puppeteer.launch({
+      headless: 'new', // Use new headless mode
+      args,
+      ignoreDefaultArgs: ['--enable-automation'],
+      executablePath: process.env.CHROME_BIN || '/nix/store/chromium/bin/chromium',
     });
 
-    // Override webRTC
-    const originalGetUserMedia = navigator.mediaDevices?.getUserMedia.bind(navigator.mediaDevices);
-    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
-      value: async (...args: any[]) => {
-        const stream = await originalGetUserMedia(...args);
-        return Object.defineProperty(stream, 'id', { value: Math.random().toString(36) });
-      },
+    console.log('Browser launched successfully');
+
+    const page = await browser.newPage();
+    console.log('New page created');
+
+    // Advanced fingerprint spoofing
+    await page.evaluateOnNewDocument(() => {
+      // Override navigator properties
+      const overrides = {
+        webdriver: false,
+        languages: navigator.languages,
+        plugins: { length: 3 },
+        chrome: { app: {}, runtime: {}, webstore: {} },
+        permissions: { query: async () => ({ state: "prompt" }) },
+      };
+
+      Object.defineProperties(navigator, {
+        ...Object.entries(overrides).reduce((acc, [key, value]) => ({
+          ...acc,
+          [key]: { get: () => value }
+        }), {})
+      });
+
+      // Override webRTC
+      const originalGetUserMedia = navigator.mediaDevices?.getUserMedia.bind(navigator.mediaDevices);
+      Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
+        value: async (...args: any[]) => {
+          const stream = await originalGetUserMedia(...args);
+          return Object.defineProperty(stream, 'id', { value: Math.random().toString(36) });
+        },
+      });
     });
-  });
 
-  // Apply profile-specific configurations
-  await page.evaluateOnNewDocument((profile) => {
-    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => profile.hardwareConcurrency });
-    Object.defineProperty(navigator, 'deviceMemory', { get: () => profile.deviceMemory });
-    Object.defineProperty(navigator, 'platform', { get: () => profile.platform });
-    Object.defineProperty(navigator, 'language', { get: () => profile.language });
+    // Apply profile-specific configurations
+    await page.evaluateOnNewDocument((profile) => {
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => profile.hardwareConcurrency });
+      Object.defineProperty(navigator, 'deviceMemory', { get: () => profile.deviceMemory });
+      Object.defineProperty(navigator, 'platform', { get: () => profile.platform });
+      Object.defineProperty(navigator, 'language', { get: () => profile.language });
 
-    // Advanced WebGL spoofing
-    const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
-    WebGLRenderingContext.prototype.getParameter = function(parameter) {
-      // Handle special WebGL parameters
-      if (parameter === WEBGL_VENDOR_OVERRIDES.UNMASKED_VENDOR_WEBGL) return profile.webglVendor;
-      if (parameter === WEBGL_VENDOR_OVERRIDES.UNMASKED_RENDERER_WEBGL) return profile.webglRenderer;
-      return originalGetParameter.call(this, parameter);
-    };
-  }, profile);
+      // Advanced WebGL spoofing
+      const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function(parameter) {
+        // Handle special WebGL parameters
+        if (parameter === WEBGL_VENDOR_OVERRIDES.UNMASKED_VENDOR_WEBGL) return profile.webglVendor;
+        if (parameter === WEBGL_VENDOR_OVERRIDES.UNMASKED_RENDERER_WEBGL) return profile.webglRenderer;
+        return originalGetParameter.call(this, parameter);
+      };
+    }, profile);
 
-  // Set cookies if available
-  if (profile.cookies && Array.isArray(profile.cookies)) {
-    await page.setCookie(...profile.cookies);
+    // Set cookies if available
+    if (profile.cookies && Array.isArray(profile.cookies)) {
+      await page.setCookie(...profile.cookies);
+    }
+
+    console.log('Browser profile configured successfully');
+    return browser;
+  } catch (error) {
+    console.error('Error launching browser:', error);
+    throw error;
   }
-
-  return browser;
 }
 
 // Helper function to get browser fingerprint
