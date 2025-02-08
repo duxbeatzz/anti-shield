@@ -6,15 +6,21 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import CreateProfile from "@/pages/profiles/create";
 import EditProfile from "@/pages/profiles/edit";
+import Sidebar from "@/components/sidebar";
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/profiles/create" component={CreateProfile} />
-      <Route path="/profiles/edit/:id" component={EditProfile} />
-      <Route component={NotFound} />
-    </Switch>
+    <div className="flex h-screen">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto bg-background">
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/profiles/create" component={CreateProfile} />
+          <Route path="/profiles/edit/:id" component={EditProfile} />
+          <Route component={NotFound} />
+        </Switch>
+      </main>
+    </div>
   );
 }
 

@@ -1,4 +1,6 @@
-import { BrowserProfile, InsertBrowserProfile } from "@shared/schema";
+import { browserProfiles, type BrowserProfile, type InsertBrowserProfile } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   getProfile(id: number): Promise<BrowserProfile | undefined>;
@@ -10,54 +12,45 @@ export interface IStorage {
   exportProfiles(): Promise<BrowserProfile[]>;
 }
 
-export class MemStorage implements IStorage {
-  private profiles: Map<number, BrowserProfile>;
-  private currentId: number;
-
-  constructor() {
-    this.profiles = new Map();
-    this.currentId = 1;
-  }
-
+export class DatabaseStorage implements IStorage {
   async getProfile(id: number): Promise<BrowserProfile | undefined> {
-    return this.profiles.get(id);
+    const [profile] = await db.select().from(browserProfiles).where(eq(browserProfiles.id, id));
+    return profile;
   }
 
   async getAllProfiles(): Promise<BrowserProfile[]> {
-    return Array.from(this.profiles.values());
+    return await db.select().from(browserProfiles);
   }
 
   async createProfile(profile: InsertBrowserProfile): Promise<BrowserProfile> {
-    const id = this.currentId++;
-    const newProfile: BrowserProfile = {
-      ...profile,
-      id,
-      cookies: []
-    };
-    this.profiles.set(id, newProfile);
-    return newProfile;
+    const [created] = await db.insert(browserProfiles).values(profile).returning();
+    return created;
   }
 
   async updateProfile(id: number, profile: Partial<InsertBrowserProfile>): Promise<BrowserProfile | undefined> {
-    const existing = this.profiles.get(id);
-    if (!existing) return undefined;
-
-    const updated = { ...existing, ...profile };
-    this.profiles.set(id, updated);
+    const [updated] = await db
+      .update(browserProfiles)
+      .set(profile)
+      .where(eq(browserProfiles.id, id))
+      .returning();
     return updated;
   }
 
   async deleteProfile(id: number): Promise<boolean> {
-    return this.profiles.delete(id);
+    const [deleted] = await db
+      .delete(browserProfiles)
+      .where(eq(browserProfiles.id, id))
+      .returning();
+    return !!deleted;
   }
 
   async importProfiles(profiles: InsertBrowserProfile[]): Promise<BrowserProfile[]> {
-    return Promise.all(profiles.map(p => this.createProfile(p)));
+    return await db.insert(browserProfiles).values(profiles).returning();
   }
 
   async exportProfiles(): Promise<BrowserProfile[]> {
-    return Array.from(this.profiles.values());
+    return await db.select().from(browserProfiles);
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
