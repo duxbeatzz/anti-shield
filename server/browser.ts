@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+import puppeteer, { Page } from 'puppeteer';
 import { BrowserProfile } from '@shared/schema';
 
 // Advanced launch options to better mimic real browsers
@@ -64,7 +64,7 @@ export async function launchBrowser(profile: BrowserProfile) {
     // Override webRTC
     const originalGetUserMedia = navigator.mediaDevices?.getUserMedia.bind(navigator.mediaDevices);
     Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
-      value: async (...args) => {
+      value: async (...args: any[]) => {
         const stream = await originalGetUserMedia(...args);
         return Object.defineProperty(stream, 'id', { value: Math.random().toString(36) });
       },
@@ -97,7 +97,7 @@ export async function launchBrowser(profile: BrowserProfile) {
 }
 
 // Helper function to get browser fingerprint
-export async function getBrowserFingerprint(page: puppeteer.Page) {
+export async function getBrowserFingerprint(page: Page) {
   return await page.evaluate(() => ({
     userAgent: navigator.userAgent,
     language: navigator.language,
